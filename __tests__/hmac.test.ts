@@ -1,33 +1,34 @@
 import crypto from 'crypto'
 import { verifyWebhookSignature } from '../src/utils/hmac'
 
-const SECRET = 'test_webhook_secret'
-
-function makeSignature(payload: Buffer, secret: string): string {
-  return `sha256=${crypto.createHmac('sha256', secret).update(payload).digest('hex')}`
-}
-
 describe('verifyWebhookSignature', () => {
+  const secret = 'test_secret_123'
+
+  function makeSignature(body: Buffer, s: string): string {
+    return `sha256=${crypto.createHmac('sha256', s).update(body).digest('hex')}`
+  }
+
   it('returns true for a valid signature', () => {
-    const payload = Buffer.from(JSON.stringify({ action: 'opened' }))
-    const sig = makeSignature(payload, SECRET)
-    expect(verifyWebhookSignature(payload, sig, SECRET)).toBe(true)
+    const body = Buffer.from(JSON.stringify({ action: 'opened' }))
+    const sig = makeSignature(body, secret)
+    expect(verifyWebhookSignature(body, sig, secret)).toBe(true)
   })
 
-  it('returns false for an invalid signature', () => {
-    const payload = Buffer.from(JSON.stringify({ action: 'opened' }))
-    expect(verifyWebhookSignature(payload, 'sha256=badhash', SECRET)).toBe(false)
+  it('returns false for a tampered body', () => {
+    const body = Buffer.from('{"action":"opened"}')
+    const tampered = Buffer.from('{"action":"closed"}')
+    const sig = makeSignature(body, secret)
+    expect(verifyWebhookSignature(tampered, sig, secret)).toBe(false)
   })
 
-  it('returns false for a tampered payload', () => {
-    const original = Buffer.from(JSON.stringify({ action: 'opened' }))
-    const sig = makeSignature(original, SECRET)
-    const tampered = Buffer.from(JSON.stringify({ action: 'closed' }))
-    expect(verifyWebhookSignature(tampered, sig, SECRET)).toBe(false)
+  it('returns false for wrong secret', () => {
+    const body = Buffer.from('payload')
+    const sig = makeSignature(body, 'wrong_secret')
+    expect(verifyWebhookSignature(body, sig, secret)).toBe(false)
   })
 
-  it('returns false for empty signature', () => {
-    const payload = Buffer.from('test')
-    expect(verifyWebhookSignature(payload, '', SECRET)).toBe(false)
+  it('returns false for malformed signature string', () => {
+    const body = Buffer.from('payload')
+    expect(verifyWebhookSignature(body, 'not-a-real-sig', secret)).toBe(false)
   })
 })

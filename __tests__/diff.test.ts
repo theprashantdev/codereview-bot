@@ -1,46 +1,49 @@
-import { truncateDiff, DiffFile } from '../src/github/diff'
+import { truncateDiff } from '../src/github/diff'
+import type { DiffFile } from '../src/github/diff'
 
-const makeFile = (filename: string, patch: string, status: 'added' | 'modified' | 'removed' = 'modified'): DiffFile => ({
+const makeFile = (filename: string, patch: string, additions = 5, deletions = 2): DiffFile => ({
   filename,
-  status,
-  additions: 5,
-  deletions: 2,
+  status: 'modified',
+  additions,
+  deletions,
   patch,
 })
 
 describe('truncateDiff', () => {
-  it('returns diff content for modified files', () => {
-    const files = [makeFile('src/index.ts', '+ const x = 1')]
+  it('includes all files when under the limit', () => {
+    const files: DiffFile[] = [
+      makeFile('a.ts', '+ const x = 1'),
+      makeFile('b.ts', '+ const y = 2'),
+    ]
     const result = truncateDiff(files)
-    expect(result).toContain('src/index.ts')
-    expect(result).toContain('+ const x = 1')
+    expect(result).toContain('a.ts')
+    expect(result).toContain('b.ts')
   })
 
   it('skips removed files', () => {
-    const files = [makeFile('deleted.ts', '- const old = true', 'removed')]
+    const files: DiffFile[] = [{ filename: 'deleted.ts', status: 'removed', additions: 0, deletions: 10, patch: '' }]
     const result = truncateDiff(files)
     expect(result).not.toContain('deleted.ts')
   })
 
-  it('truncates when total chars exceed maxChars', () => {
-    const bigPatch = 'x'.repeat(5000)
-    const files = [
-      makeFile('file1.ts', bigPatch),
-      makeFile('file2.ts', bigPatch),
-      makeFile('file3.ts', bigPatch),
+  it('truncates when total length exceeds maxChars', () => {
+    const bigPatch = 'x'.repeat(8000)
+    const files: DiffFile[] = [
+      makeFile('first.ts', bigPatch),
+      makeFile('second.ts', bigPatch),
     ]
-    const result = truncateDiff(files, 6000)
-    expect(result.length).toBeLessThanOrEqual(6500)
+    const result = truncateDiff(files, 10000)
+    expect(result).toContain('first.ts')
+    expect(result).not.toContain('second.ts')
   })
 
-  it('returns empty string for all-removed files', () => {
-    const files = [makeFile('gone.ts', '- x', 'removed')]
-    expect(truncateDiff(files)).toBe('')
+  it('returns empty string for empty files array', () => {
+    expect(truncateDiff([])).toBe('')
   })
 
-  it('handles files with no patch', () => {
-    const files = [{ filename: 'binary.png', status: 'added' as const, additions: 0, deletions: 0, patch: '' }]
+  it('handles file with no patch gracefully', () => {
+    const files: DiffFile[] = [makeFile('bin.ts', '')]
     const result = truncateDiff(files)
-    expect(result).toContain('binary.png')
+    expect(result).toContain('bin.ts')
   })
 })
