@@ -93,6 +93,14 @@ export async function analyzeCode(
     console.error('Message:', axiosErr.message)
     console.error('================================')
 
+    if (axiosErr.response?.status === 401) {
+      throw new Error('Invalid OPENROUTER_API_KEY')
+    }
+
+    if (axiosErr.code === 'ECONNABORTED') {
+      throw new Error('OpenRouter API timeout')
+    }
+
     throw err
   }
 }
