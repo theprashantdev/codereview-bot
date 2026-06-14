@@ -46,7 +46,7 @@ app.post('/webhook', async (req: Request, res: Response) => {
     const repo = repository.name
     const pullNumber = pr.number
 
-    const filesRes = await octokit.pulls.listFiles({ owner, repo, pull_number: pullNumber })
+    const filesRes = await octokit.rest.pulls.listFiles({ owner, repo, pull_number: pullNumber })
     const diff = truncateDiff(filesRes.data as any)
     if (!diff.trim()) return
 
