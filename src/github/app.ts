@@ -1,4 +1,5 @@
 import { App } from '@octokit/app'
+import { Octokit } from '@octokit/rest'
 
 let githubApp: App | null = null
 
@@ -15,7 +16,7 @@ export function getGitHubApp(): App {
     }
 
     githubApp = new App({
-      appId: appId,
+      appId,
       privateKey: privateKey.replace(/\\n/g, '\n'),
       webhooks: {
         secret: webhookSecret
@@ -31,19 +32,15 @@ export async function getInstallationOctokit(
 ): Promise<any> {
   const app = getGitHubApp()
 
-  const octokit = await app.getInstallationOctokit(
-    installationId
-  )
+  const installationAuthentication =
+    await app.octokit.auth({
+      type: 'installation',
+      installationId
+    })
 
-  console.log(
-    'Octokit methods:',
-    Object.keys(octokit || {})
-  )
+  const octokit = new Octokit({
+    auth: installationAuthentication.token
+  })
 
-  console.log(
-    'Has rest:',
-    !!(octokit as any).rest
-  )
-
-  return octokit as any
+  return octokit
 }
