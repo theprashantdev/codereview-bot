@@ -15,11 +15,11 @@ export function getGitHubApp(): App {
     }
 
     githubApp = new App({
-      appId,
+      appId: appId,
       privateKey: privateKey.replace(/\\n/g, '\n'),
       webhooks: {
-        secret: webhookSecret,
-      },
+        secret: webhookSecret
+      }
     })
   }
 
@@ -28,12 +28,22 @@ export function getGitHubApp(): App {
 
 export async function getInstallationOctokit(
   installationId: number
-) {
+): Promise<any> {
   const app = getGitHubApp()
 
   const octokit = await app.getInstallationOctokit(
     installationId
   )
 
-  return octokit
+  console.log(
+    'Octokit methods:',
+    Object.keys(octokit || {})
+  )
+
+  console.log(
+    'Has rest:',
+    !!(octokit as any).rest
+  )
+
+  return octokit as any
 }
