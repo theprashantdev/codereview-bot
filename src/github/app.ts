@@ -1,5 +1,4 @@
 import { App } from '@octokit/app'
-import { Octokit } from '@octokit/rest'
 
 let githubApp: App | null = null
 
@@ -18,13 +17,23 @@ export function getGitHubApp(): App {
     githubApp = new App({
       appId,
       privateKey: privateKey.replace(/\\n/g, '\n'),
-      webhooks: { secret: webhookSecret },
+      webhooks: {
+        secret: webhookSecret,
+      },
     })
   }
+
   return githubApp
 }
 
-export async function getInstallationOctokit(installationId: number): Promise<Octokit> {
+export async function getInstallationOctokit(
+  installationId: number
+) {
   const app = getGitHubApp()
-  return app.getInstallationOctokit(installationId) as unknown as Octokit
+
+  const octokit = await app.getInstallationOctokit(
+    installationId
+  )
+
+  return octokit
 }
