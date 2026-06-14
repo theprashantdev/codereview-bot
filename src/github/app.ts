@@ -19,8 +19,8 @@ export function getGitHubApp(): App {
       appId,
       privateKey: privateKey.replace(/\\n/g, '\n'),
       webhooks: {
-        secret: webhookSecret
-      }
+        secret: webhookSecret,
+      },
     })
   }
 
@@ -32,15 +32,12 @@ export async function getInstallationOctokit(
 ): Promise<any> {
   const app = getGitHubApp()
 
-  const installationAuthentication =
-    await app.octokit.auth({
-      type: 'installation',
-      installationId
-    })
+  const installationAuthentication = await app.octokit.auth({
+    type: 'installation',
+    installationId,
+  }) as any
 
-  const octokit = new Octokit({
-    auth: installationAuthentication.token
+  return new Octokit({
+    auth: installationAuthentication.token,
   })
-
-  return octokit
 }
