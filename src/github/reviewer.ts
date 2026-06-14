@@ -12,17 +12,22 @@ function buildReviewBody(score: number, summary: string, issues: Issue[]): strin
   const warnings = issues.filter(i => i.severity === 'warning')
   const suggestions = issues.filter(i => i.severity === 'suggestion')
 
-  const fmt = (items: Issue[]) => items.map(i => `- **${i.location}**: ${i.description}`).join('\n')
+  const fmt = (items: Issue[]) =>
+    items.map(i => `- **${i.location}**: ${i.description}`).join('\n')
 
-  return [
+  const sections = [
     `## \u{1F916} CodeReview Bot Analysis`,
     `**Overall Score: ${score.toFixed(1)}/10**`,
     `> ${summary}`,
-    critical.length ? `\n### \ud83d\udd34 Critical Issues (${critical.length})\n${fmt(critical)}` : '',
-    warnings.length ? `\n### \ud83d\udfe1 Warnings (${warnings.length})\n${fmt(warnings)}` : '',
-    suggestions.length ? `\n### \ud83d\udfe2 Suggestions (${suggestions.length})\n${fmt(suggestions)}` : '',
-    `\n---\n*Reviewed by [CodeReview Bot](https://github.com/theprashantdev/codereview-bot)*`
-  ].filter(Boolean).join('\n')
+  ]
+
+  if (critical.length) sections.push(`\n### \u{1F534} Critical Issues (${critical.length})\n${fmt(critical)}`)
+  if (warnings.length) sections.push(`\n### \u{1F7E1} Warnings (${warnings.length})\n${fmt(warnings)}`)
+  if (suggestions.length) sections.push(`\n### \u{1F7E2} Suggestions (${suggestions.length})\n${fmt(suggestions)}`)
+
+  sections.push(`\n---\n*Reviewed by [CodeReview Bot](https://github.com/theprashantdev/codereview-bot)*`)
+
+  return sections.filter(Boolean).join('\n')
 }
 
 export async function postReview(
@@ -33,7 +38,7 @@ export async function postReview(
   score: number,
   summary: string,
   issues: Issue[]
-) {
+): Promise<void> {
   const body = buildReviewBody(score, summary, issues)
   const event = issues.some(i => i.severity === 'critical') ? 'REQUEST_CHANGES' : 'COMMENT'
   await octokit.pulls.createReview({ owner, repo, pull_number: pullNumber, body, event })

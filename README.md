@@ -1,127 +1,163 @@
-# 🤖 CodeReview Bot
+# CodeReview Bot
 
-> Automatically reviews every pull request in your repo. Catches bugs, security vulnerabilities, and style issues before humans even look at the code.
+> A GitHub App that automatically reviews every pull request. Detects bugs, security issues, performance problems, and style violations using an LLM via OpenRouter.
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue?style=flat-square&logo=typescript)]()
 [![Node.js](https://img.shields.io/badge/Node.js-20-green?style=flat-square&logo=node.js)]()
 [![GitHub App](https://img.shields.io/badge/GitHub-App-black?style=flat-square&logo=github)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+[![CI](https://github.com/theprashantdev/codereview-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/theprashantdev/codereview-bot/actions/workflows/ci.yml)
 
 ## What It Does
 
 Whenever a PR is opened or updated:
-1. CodeReview Bot reads the diff
-2. Sends it to an LLM with structured review instructions
-3. Posts inline comments on specific lines with detected issues
-4. Adds a summary review comment with overall quality score
-5. Labels the PR: `needs-changes` / `looks-good` / `security-risk`
+1. GitHub sends a webhook to the bot
+2. The bot fetches the PR diff using the GitHub App installation token
+3. The diff is sent to an LLM (via OpenRouter) with structured review instructions
+4. The bot posts a review comment with a quality score and categorized issues
+5. If critical issues are found, the bot requests changes; otherwise it posts a comment
 
-## Example Output
-
-The bot posts a review like this on every PR:
+## Example Review Output
 
 ```
-## 🤖 CodeReview Bot Analysis
+## \u{1F916} CodeReview Bot Analysis
+**Overall Score: 6.8/10**
+> Two security issues found. Refactoring recommended.
 
-**Overall Score: 7.2/10**
+### \u{1F534} Critical Issues (1)
+- line 47 in auth.ts: SQL query built with string concatenation \u2014 SQL injection risk
 
-### 🔴 Critical Issues (2)
-- Line 47: SQL query built with string concatenation — SQL injection risk
-- Line 89: API key hardcoded in source file
-
-### 🟡 Warnings (3)
-- Line 23: Function has 127 lines — consider splitting
-- Line 55: Unhandled promise rejection
-- Line 71: Deprecated dependency `request` — use `axios` or `httpx`
-
-### 🟢 Suggestions (2)
-- Line 12: `async/await` preferred over `.then()` chains
-- Line 34: Variable name `d` is not descriptive
+### \u{1F7E1} Warnings (2)
+- line 23 in service.ts: Function has 140 lines \u2014 consider splitting
+- line 55 in api.ts: Unhandled promise rejection
 ```
 
 ## Setup
 
 ### 1. Create a GitHub App
 
-1. Go to GitHub Settings → Developer settings → GitHub Apps → New GitHub App
-2. Set **Webhook URL** to your server URL + `/webhook`
-3. Enable permissions: **Pull requests** (read & write), **Contents** (read)
-4. Subscribe to events: `pull_request`
-5. Download the private key
+1. Go to **GitHub Settings \u2192 Developer settings \u2192 GitHub Apps \u2192 New GitHub App**
+2. Set **Webhook URL** to `https://your-server.com/webhook`
+3. Set **Webhook secret** (save this value for `GITHUB_WEBHOOK_SECRET`)
+4. Grant permissions: **Pull requests** \u2192 Read & write, **Contents** \u2192 Read
+5. Subscribe to events: `Pull request`
+6. Click **Create GitHub App**
+7. Note the **App ID** (for `GITHUB_APP_ID`)
+8. Click **Generate a private key** \u2192 download the `.pem` file
 
-### 2. Deploy
+### 2. Configure Environment
 
 ```bash
 git clone https://github.com/theprashantdev/codereview-bot
 cd codereview-bot
 npm install
-cp .env.example .env  # fill in GitHub App credentials + OpenRouter key
-npm run build
-npm start
+cp .env.example .env
 ```
 
-### 3. Install
+Edit `.env`:
 
-Install the GitHub App on any repository. Every new PR will be reviewed automatically.
+```env
+GITHUB_APP_ID=123456
+GITHUB_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...paste key here...\n-----END RSA PRIVATE KEY-----"
+GITHUB_WEBHOOK_SECRET=your_webhook_secret
+OPENROUTER_API_KEY=your_openrouter_api_key
+OPENROUTER_MODEL=openai/gpt-4o-mini
+PORT=3000
+```
+
+The private key content should have literal `\n` (escaped) when stored in a single `.env` line.
+
+### 3. Build and Run
+
+```bash
+npm run build
+npm start
+# or for development:
+npm run dev
+```
+
+### 4. Install the App
+
+Go to your GitHub App settings \u2192 **Install App** \u2192 select the repos you want reviewed.
+
+Every new PR in those repos will be reviewed automatically.
 
 ## Environment Variables
 
-```env
-GITHUB_APP_ID=your_app_id
-GITHUB_PRIVATE_KEY_PATH=./private-key.pem
-GITHUB_WEBHOOK_SECRET=your_webhook_secret
-OPENROUTER_API_KEY=your_openrouter_key
-OPENROUTER_MODEL=openai/gpt-4o-mini
-PORT=3000
+| Variable | Required | Description |
+|---|---|---|
+| `GITHUB_APP_ID` | Yes | Your GitHub App's numeric ID |
+| `GITHUB_PRIVATE_KEY` | Yes | RSA private key content (with `\n` escaping) |
+| `GITHUB_WEBHOOK_SECRET` | Yes | Secret set when creating the app |
+| `OPENROUTER_API_KEY` | Yes | Your OpenRouter API key |
+| `OPENROUTER_MODEL` | No | Model to use (default: `openai/gpt-4o-mini`) |
+| `PORT` | No | Port to listen on (default: `3000`) |
+
+## Running Tests
+
+```bash
+npm test
+```
+
+Tests cover HMAC verification, diff truncation, and the AI analysis function with mocked HTTP calls. No API key or GitHub credentials needed.
+
+## Docker
+
+```bash
+docker build -t codereview-bot .
+docker run -p 3000:3000 --env-file .env codereview-bot
 ```
 
 ## Architecture
 
 ```
- GitHub PR opened
-       │
-       ▼
- GitHub Webhook ───►  Express Server  ───►  Diff Parser
-                         │                        │
-                         ▼                        ▼
-                    Verify HMAC              OpenRouter API
-                    signature                (Code Review)
-                         │                        │
-                         ▼                        ▼
-                    GitHub API  ◀────── Review Formatter
-                    (post review)
+GitHub PR opened/updated
+         │
+         ▼
+  POST /webhook
+  (HMAC signature verified)
+         │
+         ▼
+  Fetch PR diff
+  (GitHub App installation token)
+         │
+         ▼
+  Truncate diff (max 12,000 chars)
+         │
+         ▼
+  OpenRouter LLM Analysis
+  (score + summary + issues)
+         │
+         ▼
+  Post GitHub Review
+  (COMMENT or REQUEST_CHANGES)
 ```
-
-## Review Categories
-
-| Category | Examples |
-|----------|----------|
-| **Security** | SQL injection, hardcoded secrets, insecure crypto, XSS |
-| **Bugs** | Null pointer risks, off-by-one, unhandled errors |
-| **Performance** | N+1 queries, blocking I/O in async context |
-| **Style** | Long functions, poor naming, dead code |
-| **Dependencies** | Deprecated packages, known vulnerabilities |
 
 ## Project Structure
 
 ```
 codereview-bot/
-├── src/
-│   ├── index.ts              # Express server + webhook handler
-│   ├── github/
-│   │   ├── app.ts            # GitHub App auth
-│   │   ├── diff.ts           # PR diff parser
-│   │   └── reviewer.ts       # Posts review comments
-│   ├── ai/
-│   │   └── analyze.ts        # LLM code analysis
-│   └── utils/
-│       └── hmac.ts           # Webhook signature verification
-├── package.json
-├── tsconfig.json
-├── .env.example
-└── README.md
+\u251c\u2500\u2500 src/
+\u2502   \u251c\u2500\u2500 index.ts              # Express server + webhook handler
+\u2502   \u251c\u2500\u2500 github/
+\u2502   \u2502   \u251c\u2500\u2500 app.ts            # GitHub App installation auth
+\u2502   \u2502   \u251c\u2500\u2500 diff.ts           # PR diff parser + truncator
+\u2502   \u2502   \u2514\u2500\u2500 reviewer.ts       # Posts review comments
+\u2502   \u251c\u2500\u2500 ai/
+\u2502   \u2502   \u2514\u2500\u2500 analyze.ts        # LLM code analysis via OpenRouter
+\u2502   \u2514\u2500\u2500 utils/
+\u2502       \u2514\u2500\u2500 hmac.ts           # Webhook signature verification
+\u251c\u2500\u2500 __tests__/
+\u2502   \u251c\u2500\u2500 hmac.test.ts
+\u2502   \u251c\u2500\u2500 diff.test.ts
+\u2502   \u2514\u2500\u2500 analyze.test.ts
+\u251c\u2500\u2500 jest.config.js
+\u251c\u2500\u2500 package.json
+\u251c\u2500\u2500 tsconfig.json
+\u251c\u2500\u2500 Dockerfile
+\u2514\u2500\u2500 .env.example
 ```
 
 ## License
 
-MIT © [Prashant Raj](https://github.com/theprashantdev)
+MIT \u00a9 [Prashant Raj](https://github.com/theprashantdev)

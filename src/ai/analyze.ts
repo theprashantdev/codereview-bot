@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios, { AxiosError } from 'axios'
 
 const REVIEW_PROMPT = `You are a senior software engineer doing a code review. Analyze this diff and identify:
 1. Security vulnerabilities (SQL injection, hardcoded secrets, XSS, insecure patterns)
@@ -18,24 +18,49 @@ Respond in this JSON format:
   ]
 }`
 
-export async function analyzeCode(diff: string, apiKey: string, model: string): Promise<{
+export async function analyzeCode(
+  diff: string,
+  apiKey: string,
+  model: string
+): Promise<{
   score: number
   summary: string
-  issues: Array<{category: string; severity: string; location: string; description: string}>
+  issues: Array<{ category: string; severity: string; location: string; description: string }>
 }> {
-  const response = await axios.post(
-    'https://openrouter.ai/api/v1/chat/completions',
-    {
-      model,
-      messages: [
-        { role: 'system', content: REVIEW_PROMPT },
-        { role: 'user', content: `Diff to review:\n${diff}` }
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.1,
-    },
-    { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } }
-  )
-  const content = response.data.choices[0].message.content
-  return JSON.parse(content)
+  if (!apiKey) {
+    throw new Error('OPENROUTER_API_KEY is not set')
+  }
+
+  try {
+    const response = await axios.post(
+      'https://openrouter.ai/api/v1/chat/completions',
+      {
+        model,
+        messages: [
+          { role: 'system', content: REVIEW_PROMPT },
+          { role: 'user', content: `Diff to review:\n${diff}` }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.1,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000,
+      }
+    )
+    const content = response.data.choices[0].message.content
+    return JSON.parse(content)
+  } catch (err) {
+    const axiosErr = err as AxiosError
+    if (axiosErr.response?.status === 401) {
+      throw new Error('Invalid OPENROUTER_API_KEY')
+    }
+    if (axiosErr.code === 'ECONNABORTED') {
+      throw new Error('OpenRouter API timeout')
+    }
+    throw err
+  }
 }
