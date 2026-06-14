@@ -9,29 +9,22 @@ import { getInstallationOctokit } from './github/app'
 const app = express()
 app.use(express.raw({ type: 'application/json' }))
 
-const {
-  GITHUB_WEBHOOK_SECRET,
-  OPENROUTER_API_KEY,
-  OPENROUTER_MODEL = 'openai/gpt-4o-mini',
-  PORT = '3000'
-} = process.env
-
-if (!GITHUB_WEBHOOK_SECRET) {
-  console.error('FATAL: GITHUB_WEBHOOK_SECRET is not set')
-  process.exit(1)
-}
-if (!OPENROUTER_API_KEY) {
-  console.error('FATAL: OPENROUTER_API_KEY is not set')
-  process.exit(1)
-}
+const PORT = process.env.PORT || '3000'
 
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', service: 'codereview-bot' })
 })
 
 app.post('/webhook', async (req: Request, res: Response) => {
+  const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET
+  const apiKey = process.env.OPENROUTER_API_KEY
+  const model = process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini'
+
+  if (!webhookSecret) return res.status(500).send('GITHUB_WEBHOOK_SECRET not configured')
+  if (!apiKey) return res.status(500).send('OPENROUTER_API_KEY not configured')
+
   const signature = req.headers['x-hub-signature-256'] as string
-  if (!GITHUB_WEBHOOK_SECRET || !verifyWebhookSignature(req.body as Buffer, signature, GITHUB_WEBHOOK_SECRET)) {
+  if (!verifyWebhookSignature(req.body as Buffer, signature, webhookSecret)) {
     return res.status(401).send('Unauthorized')
   }
 
@@ -46,10 +39,7 @@ app.post('/webhook', async (req: Request, res: Response) => {
 
   try {
     const installationId = installation?.id
-    if (!installationId) {
-      console.error('No installation ID in webhook payload')
-      return
-    }
+    if (!installationId) { console.error('No installation ID'); return }
 
     const octokit = await getInstallationOctokit(installationId)
     const owner = repository.owner.login
@@ -60,13 +50,19 @@ app.post('/webhook', async (req: Request, res: Response) => {
     const diff = truncateDiff(filesRes.data as any)
     if (!diff.trim()) return
 
-    const analysis = await analyzeCode(diff, OPENROUTER_API_KEY!, OPENROUTER_MODEL)
+    const analysis = await analyzeCode(diff, apiKey, model)
     await postReview(octokit, owner, repo, pullNumber, analysis.score, analysis.summary, analysis.issues)
   } catch (err) {
     console.error('Review failed:', err)
   }
 })
 
-app.listen(parseInt(PORT), () => console.log(`CodeReview Bot running on port ${PORT}`))
+if (require.main === module) {
+  const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET
+  const apiKey = process.env.OPENROUTER_API_KEY
+  if (!webhookSecret) { console.error('FATAL: GITHUB_WEBHOOK_SECRET is not set'); process.exit(1) }
+  if (!apiKey) { console.error('FATAL: OPENROUTER_API_KEY is not set'); process.exit(1) }
+  app.listen(parseInt(PORT as string), () => console.log(`CodeReview Bot running on port ${PORT}`))
+}
 
 export { app }
