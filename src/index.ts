@@ -24,15 +24,22 @@ app.get('/health', (_req: Request, res: Response) => {
 })
 
 app.post('/webhook', async (req: Request, res: Response) => {
+  console.log('==============================')
+  console.log('Webhook received')
+  console.log('Event:', req.headers['x-github-event'])
+  console.log('==============================')
+
   const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET
   const apiKey = process.env.OPENROUTER_API_KEY
   const model = process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini'
 
   if (!webhookSecret) {
+    console.error('Missing GITHUB_WEBHOOK_SECRET')
     return res.status(500).send('GITHUB_WEBHOOK_SECRET not configured')
   }
 
   if (!apiKey) {
+    console.error('Missing OPENROUTER_API_KEY')
     return res.status(500).send('OPENROUTER_API_KEY not configured')
   }
 
@@ -45,12 +52,14 @@ app.post('/webhook', async (req: Request, res: Response) => {
       webhookSecret
     )
   ) {
+    console.error('Webhook signature failed')
     return res.status(401).send('Unauthorized')
   }
 
   const event = req.headers['x-github-event']
 
   if (event !== 'pull_request') {
+    console.log('Ignoring event:', event)
     return res.sendStatus(200)
   }
 
@@ -65,7 +74,10 @@ app.post('/webhook', async (req: Request, res: Response) => {
     installation
   } = payload
 
+  console.log('PR action:', action)
+
   if (!['opened', 'synchronize'].includes(action)) {
+    console.log('Ignoring action:', action)
     return res.sendStatus(200)
   }
 
@@ -73,6 +85,8 @@ app.post('/webhook', async (req: Request, res: Response) => {
 
   try {
     const installationId = installation?.id
+
+    console.log('Installation ID:', installationId)
 
     if (!installationId) {
       console.error('No installation ID')
@@ -82,9 +96,15 @@ app.post('/webhook', async (req: Request, res: Response) => {
     const octokit: any =
       await getInstallationOctokit(installationId)
 
+    console.log('Octokit created')
+
     const owner = repository.owner.login
     const repo = repository.name
     const pullNumber = pr.number
+
+    console.log(
+      `Fetching files for ${owner}/${repo} PR #${pullNumber}`
+    )
 
     const filesRes = await octokit.rest.pulls.listFiles({
       owner,
@@ -92,11 +112,18 @@ app.post('/webhook', async (req: Request, res: Response) => {
       pull_number: pullNumber
     })
 
+    console.log(
+      `Files fetched: ${filesRes.data.length}`
+    )
+
     const diff = truncateDiff(filesRes.data as any)
 
     if (!diff.trim()) {
+      console.log('Empty diff')
       return
     }
+
+    console.log('Running AI analysis')
 
     const analysis = await analyzeCode(
       diff,
@@ -104,8 +131,10 @@ app.post('/webhook', async (req: Request, res: Response) => {
       model
     )
 
+    console.log('AI analysis complete')
+
     await postReview(
-      octokit as any,
+      octokit,
       owner,
       repo,
       pullNumber,
@@ -113,6 +142,8 @@ app.post('/webhook', async (req: Request, res: Response) => {
       analysis.summary,
       analysis.issues
     )
+
+    console.log('Review posted successfully')
   } catch (err) {
     console.error('Review failed:', err)
   }
